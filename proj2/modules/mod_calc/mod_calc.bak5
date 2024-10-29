@@ -1,0 +1,59 @@
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/kallsyms.h>
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("Kernel module to modify sys_calc behavior");
+
+// Declare a pointer to hold the original sys_calc function
+static asmlinkage int (*original_sys_calc)(int, int, char, int*);
+
+// Replacement function that only performs modulo operation
+static asmlinkage int mod_calc(int param1, int param2, char operation, int *result) {
+    int temp_result;
+
+    if (param2 == 0) {
+        return -1; // Prevent division by zero in modulo operation
+    }
+
+    temp_result = param1 % param2;
+
+    if (copy_to_user(result, &temp_result, sizeof(int))) {
+        return -1; // Fail if unable to copy result to user space
+    }
+
+    return 0; // Success
+}
+
+// Define the system call table pointer
+static unsigned long **sys_call_table;
+
+static int __init mod_calc_init(void) {
+    // Locate the system call table address using kallsyms
+    sys_call_table = (unsigned long **)kallsyms_lookup_name("sys_call_table");
+
+    if (!sys_call_table) {
+        pr_err("Failed to locate sys_call_table\n");
+        return -EINVAL;
+    }
+
+    // Store original sys_calc function and replace it with mod_calc
+    original_sys_calc = (void *)sys_call_table[397];
+    sys_call_table[397] = (unsigned long *)mod_calc;
+
+    pr_info("mod_calc loaded, sys_calc now uses modulo operation\n");
+    return 0;
+}
+
+static void __exit mod_calc_exit(void) {
+    // Restore the original sys_calc function
+    sys_call_table[397] = (unsigned long *)original_sys_calc;
+    pr_info("mod_calc unloaded, sys_calc restored to original\n");
+}
+
+module_init(mod_calc_init);
+module_exit(mod_calc_exit);
+

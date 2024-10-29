@@ -1,0 +1,87 @@
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/kallsyms.h>
+#include <linux/syscalls.h>
+#include <linux/mm.h>
+
+// Declare a pointer to hold the original sys_calc function
+static asmlinkage int (*original_sys_calc)(int, int, char, int __user*);
+static unsigned long *sys_call_table;
+
+
+// Replacement function that only performs modulo operation
+static asmlinkage int mod_calc(int param1, int param2, char operation, int *result) {
+    int temp_result;
+    printk(KERN_INFO "dddd\n");
+    if (param2 == 0) {
+        return -1; // Prevent division by zero in modulo operation
+    }
+
+    temp_result = param1 % param2;
+
+    if (copy_to_user(result, &temp_result, sizeof(int))) {
+        return -1; // Fail if unable to copy result to user space
+    }
+
+    return 0; // Success
+}
+
+
+
+/* Helper function to find the system call table address */
+unsigned long *find_sys_call_table(void) {
+    unsigned long *sys_table;
+
+    /* kallsyms_lookup_name is used to look up the address of sys_call_table */
+    sys_table = (unsigned long *) kallsyms_lookup_name("sys_call_table");
+    return sys_table;
+}
+
+
+
+
+
+
+static int __init mod_calc_init(void) {
+    // Locate the original sys_calc function using kallsyms
+//    sys_call_table = (unsigned long *) kallsyms_lookup_name("sys_call_table");
+   sys_call_table = find_sys_call_table();
+
+    printk(KERN_INFO "ddd2  % d\n", original_sys_calc);
+    if (!sys_call_table) {
+        pr_err("Failed to locate sys_call_table\n");
+        return  -2;//-EINVAL;
+    }
+
+    original_sys_calc = (void *)sys_call_table[__NR_sys_calc]; 
+    write_lock (&sys_call_table [397]);
+    sys_call_table[__NR_sys_calc] = (unsigned long *)mod_calc;
+    //write_unlock (&sys_call_table[__NR_sys_calc]);			    
+    
+
+    // Override sys_calc function with mod_calc
+    //*((unsigned long *)kallsyms_lookup_name("sys_call_table") + 397) = (unsigned long)mod_calc;
+    pr_info("mod_calc loaded, sys_calc now uses modulo operation\n");
+
+    printk(KERN_INFO "ddd3\n");
+    return 0;
+}
+
+static void __exit mod_calc_exit(void) {
+    // Restore the original sys_calc function when module is removed
+    //*((unsigned long *)kallsyms_lookup_name("sys_call_table") + 397) = (unsigned long)original_sys_calc;
+
+    write_lock (sys_call_table [397]);
+    sys_call_table[__NR_sys_calc] = (unsigned long *)original_sys_calc;
+    write_unlock (sys_call_table[__NR_sys_calc]);			    
+    
+    pr_info("mod_calc unloaded, sys_calc restored to original\n");
+}
+
+module_init(mod_calc_init);
+module_exit(mod_calc_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("Kernel module to modify sys_calc behavior");
+

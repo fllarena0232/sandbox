@@ -1,0 +1,164 @@
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/syscalls.h>
+#include <linux/kallsyms.h>
+#include <linux/uaccess.h>
+#include <linux/init.h>
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("LKM to modify calc system call to always perform modulo on Raspberry Pi");
+
+// Pointer to the system call table
+unsigned long *sys_call_table;
+
+// Pointer to the original calc system call.
+asmlinkage long (*original_calc)(int, int, char, int __user*);
+
+// New calc system call that always performs modulo.
+asmlinkage long new_calc(int a, int b, char operation, int __user *result ) {
+    printk(KERN_INFO "Intercepted calc system call: Performing %d %% %d\n", a, b);
+    if (b == 0) {
+        printk(KERN_WARNING "Attempt to divide by zero!\n");
+        return -1;  //EINVAL; // Return error for divide by zero.
+    }
+    return a % b; // Always return modulo operation.
+}
+
+unsigned long **find_syscall_table (void){
+	unsigned long **sct=(unsigned long **)0x80108224; //<--check dir
+	return sct;
+}
+
+Federico Llarena <llarena.federico@gmail.com>
+	
+9:34 PM (0 minutes ago)
+	
+to me
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <linux/init.h>
+
+// Metadata
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("LKM to modify calc system call to always return modulo of two integers");
+
+// Pointer to the original system call
+asmlinkage long (*original_calc)(int, int, char);
+
+// Our modified `calc` system call
+asmlinkage long modified_calc(int a, int b, char op) {
+    if (b == 0) {
+        printk(KERN_ALERT "Division by zero in modulo operation.\n");
+        return -EINVAL; // Return error code for invalid argument
+    }
+    return a % b; // Always perform modulo operation
+}
+
+// Pointer to system call table
+
+static unsigned long *sys_call_table;
+
+static int __init find_sys_call_table_init(void) {
+    // Lookup the address of sys_call_table
+    sys_call_table = (unsigned long*)kallsyms_lookup_name("sys_call_table");
+
+    if (!sys_call_table) {
+        pr_alert("Could not find sys_call_table address.\n");
+        return -EFAULT;
+    }
+
+    pr_info("sys_call_table address: %px\n", sys_call_table);
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+unsigned long **sys_call_table;
+
+// Function to find the system call table
+unsigned long **find_sys_call_table(void) {
+    // The method to locate the sys_call_table can vary by kernel version
+    unsigned long **sct = (unsigned long **)0x80108224; // Hypothetical address
+    return sct;
+}
+
+// Make the system call table writable
+void make_rw(unsigned long address) {
+    unsigned int level;
+    pte_t *pte = lookup_address(address, &level);
+    if (pte->pte &~ _PAGE_RW) {
+        pte->pte |= _PAGE_RW;
+    }
+}
+
+// Make the system call table read-only
+void make_ro(unsigned long address) {
+    unsigned int level;
+    pte_t *pte = lookup_address(address, &level);
+    pte->pte = pte->pte &~ _PAGE_RW;
+}
+
+// Load module
+static int __init lkm_init(void) {
+    sys_call_table = find_sys_call_table();
+    if (!sys_call_table) {
+        printk(KERN_ALERT "Couldn't locate sys_call_table.\n");
+        return -1;
+    }	
+
+
+
+// Module initialization
+static int __init lkm_init(void) {
+    // Find the system call table
+    sys_call_table = (unsigned long *)kallsyms_lookup_name("sys_call_table");
+
+    if (!sys_call_table) {
+        printk(KERN_ERR "Couldn't find the system call table\n");
+        return -1;
+    }
+
+    // Save the original calc system call.
+    original_calc = (void *)sys_call_table[__NR_sys_calc];
+
+    // Disable write protection and replace calc system call with new_calc.
+    disable_write_protection();
+    sys_call_table[__NR_sys_calc] = (unsigned long)new_calc;
+    enable_write_protection();
+
+    printk(KERN_INFO "Loaded LKM: calc system call is now replaced with modulo operation\n");
+    return 0;
+}
+
+
+// Unload module
+static void __exit lkm_exit(void) {
+    // Restore original calc system call
+    if (sys_call_table) {
+        sys_call_table[__NR_sys_calc] = (unsigned long *)original_calc;
+    }
+
+    // Make sys_call_table read-only
+    make_ro((unsigned long) sys_call_table);
+
+    printk(KERN_INFO "Module unloaded: calc system call restored.\n");
+}
+
+module_init(lkm_init);
+module_exit(lkm_exit);

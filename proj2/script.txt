@@ -1,0 +1,28 @@
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs -j8
+
+lsblk
+sudo mount /dev/sdb1 mnt/boot
+sudo mount /dev/sdb2 mnt/root
+
+sudo env PATH=$PATH make -j$(nproc) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=mnt/root modules_install
+
+sudo cp mnt/boot/$KERNEL.img mnt/boot/$KERNEL-backup.img
+cp arch/arm/boot/zImage mnt/boot/$KERNEL.img
+sudo cp arch/arm/boot/dts/*.dtb mnt/boot/
+
+sudo cp arch/arm/boot/dts/overlays/*.dtb* mnt/boot/overlays/
+sudo cp arch/arm/boot/dts/overlays/README mnt/boot/overlays/
+
+sudo umount mnt/boot 
+sudo umount mnt/root 
+
+ausyscall --dump
+
+vi arch/x86/entry/syscalls/syscall_64.tbl 
+
+~/Documents/GitHub/CS596-RT-2024Fall-Group12/include/uapi/asm-generic$ vi unistd.h
+
+~/Documents/GitHub/CS596-RT-2024Fall-Group12/kernel$ vi sys_ni.c 
+
+scp name_module.ko fllarena@192.168.0.75:/home/fllarena
+ 

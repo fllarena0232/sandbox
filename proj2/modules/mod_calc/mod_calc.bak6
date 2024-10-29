@@ -1,0 +1,105 @@
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/kallsyms.h>
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <linux/rwlock.h>
+#include <linux/preempt.h>
+#include <linux/unistd.h>
+#include <linux/module.h>
+//#include <asm/semaphore.h>
+
+// Define the system call table pointer and the read-write lock
+//static unsigned long *sys_call_table;
+static unsigned long **sys_call_table;
+static unsigned long **sys_original_table;
+static unsigned long **sys_modified_table;
+static DEFINE_RWLOCK(sys_call_lock); // Initialize the read-write lock
+
+// Declare a pointer to hold the original sys_calc function
+static asmlinkage long (*original_sys_calc)(int, int, char, int __user *);
+
+asmlinkage long temp(void) {
+    printk(KERN_INFO "module temp");
+	    return 0;
+    }
+	
+// Replacement function that only performs modulo operation
+asmlinkage long mod_calc(int param1, int param2, char operation, int __user *result) {
+    int number;
+
+    printk(KERN_INFO "in module");
+    // Check for division by zero
+    if (param2 == 0) {
+        return -1; // Return error if dividing by zero
+    }
+    // Copy the integer from user space to kernel space
+    if (copy_from_user(&number, result, sizeof(int))) {
+        return 2; // Return error if copy fails
+    }
+
+    // Perform the modulo operation
+    number = param1 % param2;
+
+     // Copy the incremented number back to user space
+    if (copy_to_user(result, &number, sizeof(int))) {
+        return 3; // Return error if copy fails
+    }
+
+    return 0; // Success
+}
+
+EXPORT_SYMBOL(mod_calc);
+static int __init mod_calc_init(void) {
+    // Locate the system call table address using kallsyms
+    sys_call_table = (unsigned long **)kallsyms_lookup_name("sys_call_table");
+    sys_original_table = sys_call_table;  
+    sys_modified_table = sys_call_table;  
+    //struct module *mod;    
+    if (!sys_call_table){     
+        pr_err("Failed to locate sys_call_table\n");
+        return -2 ;//EINVAL;
+    }
+    // Store the original sys_calc function and replace it with mod_calc
+    //original_sys_calc = (void *)sys_call_table[397];
+    printk(KERN_INFO " mem location: %px", (void *)sys_call_table[397]);
+   
+    //check info of mod_calc
+    struct module *mod = find_module("mymodule"); // Replace "mymodule" with the actual module name
+    	mod =  find_module("mod_calc");
+    		unsigned long address = (unsigned long)mod->core_layout.base;
+    		printk(KERN_INFO "Module base address: 0x%lx\n", address);
+	if (mod) {
+    		printk(KERN_INFO "Module base address: 0x%lx\n", address);
+	} else {
+    		printk(KERN_ERR "Module not found\n");
+	}
+
+    
+    address = kallsyms_lookup_name("mod_calc");  
+    // Disable preemption and acquire write lock
+    write_lock(&sys_call_lock);
+   
+   //sys_call_table[397] = address; 
+    
+    // Release write lock and re-enable preemption
+    write_unlock(&sys_call_lock);
+
+    pr_info("mod_calc loaded, sys_calc now uses modulo operation\n");
+    return 0;
+}
+
+
+static void __exit mod_calc_exit(void) {
+    // Restore the original sys_calc function
+    write_lock(&sys_call_lock);
+    sys_call_table =  sys_original_table;
+    write_unlock(&sys_call_lock);
+    pr_info("mod_calc unloaded, sys_calc restored to original\n");
+}
+
+module_init(mod_calc_init);
+module_exit(mod_calc_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Kernel module to modify sys_calc behavior");

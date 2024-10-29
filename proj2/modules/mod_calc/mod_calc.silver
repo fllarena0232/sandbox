@@ -1,0 +1,90 @@
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/kallsyms.h>
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <linux/rwlock.h> // Include for read-write locks
+#include <linux/preempt.h>
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Your Name");
+MODULE_DESCRIPTION("Kernel module to modify sys_calc behavior");
+
+// Define the system call table pointer and the read-write lock
+static unsigned long **sys_call_table;
+static DEFINE_RWLOCK(sys_call_lock); // Initialize the read-write lock
+
+// Declare a pointer to hold the original sys_calc function
+
+static asmlinkage long (*original_sys_calc)(int, int, char, int __user *);
+//static asmlinkage long original_sys_calc(int param1, int param2, char operation, int __user *result)
+
+
+// Replacement function that only performs modulo operation
+static asmlinkage long mod_calc(int param1, int param2, char operation, int __user  *result) {
+    int temp_result;
+    printk(KERN_INFO "inside modulo");
+    result =4;
+
+ // Copy the integer from user space to kernel space
+ //   if (copy_from_user(&temp_result, result, sizeof(int))) {
+ //       return 2; // Return error if copy fails
+ //   }
+
+
+   //if (param2 == 0) {
+   //     return -1; // Prevent division by zero in modulo operation
+   // }
+
+   // temp_result = param1 % param2;
+
+ //   if (copy_to_user(result, &temp_result, sizeof(int))) {
+ //       return -1; // Fail if unable to copy result to user space
+//    }
+
+
+    return 0; // Success
+}
+
+static int __init mod_calc_init(void) {
+    
+	// Locate the system call table address using kallsyms
+    	sys_call_table = (unsigned long **)kallsyms_lookup_name("sys_call_table");
+    	if (!sys_call_table) {
+        	pr_err("Failed to locate sys_call_table\n");
+       	 	return -2; //INVAL;
+    	}
+    
+    	original_sys_calc = (void *)sys_call_table[397];
+    
+	
+	//preempt_disable();
+    	// Acquire the write lock before modifying the sys_call_table
+    	//pr_info("writeystable\n");
+    	write_lock(&sys_call_lock);
+    	//pr_info("intosystable\n");
+    	original_sys_calc = (void *)sys_call_table[397];
+    	//ddpr_info("intosystable\n");
+     	//sys_call_table[397] = (long *)mod_calc;
+    	sys_call_table[397] = (long *)original_sys_calc;
+    	write_unlock(&sys_call_lock); // Release the write lock
+    	// preempt_enable();
+    	pr_info("mod_calc loaded, sys_calc now uses modulo operation\n");
+    	return 0;
+}
+
+static void __exit mod_calc_exit(void) {
+    // Restore the original sys_calc function
+    	printk(KERN_INFO "exit module\n");
+	//preempt_disable(); 
+	write_lock(&sys_call_lock); // Acquire write lock before modification
+    	original_sys_calc = (void *)sys_call_table[397];
+    	sys_call_table[397] = (long *)original_sys_calc;
+    	write_unlock(&sys_call_lock); // Release the write lock
+     // 	preempt_enable();
+    	pr_info("mod_calc unloaded, sys_calc restored to original\n");
+}
+
+module_init(mod_calc_init);
+module_exit(mod_calc_exit);
+

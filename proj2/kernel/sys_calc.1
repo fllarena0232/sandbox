@@ -1,0 +1,37 @@
+#include <linux/kernel.h>
+#include <linux/syscalls.h>
+
+SYSCALL_DEFINE4(sys_calc, int, param1, int, param2, char, operation, int __user*, result) {
+    int res = 0;
+     result = 0;
+   printk(KERN_INFO "syscall: sys_calc\n"); 
+    switch (operation) {
+        case '+':
+            res = param1 + param2;
+            break;
+        case '-':
+            res = param1 - param2;
+            break;
+        case '*':
+            res = param1 * param2;
+            break;
+        case '/':
+            if (param2 == 0) {
+                return 1; // -EINVAL;  // Error for division by zero
+            }
+           res = param1 / param2;
+            break;
+        default:
+            return 2; //-EINVAL;  // Invalid operation
+    }
+    // Copy the result to user-space memory
+    printk(KERN_INFO "syscall: param1 %d \n",param1);
+    printk(KERN_INFO "syscall: param2 %d \n",param2);
+    printk(KERN_INFO "syscall: oper %c \n",operation);
+    printk(KERN_INFO "syscall: oper %d \n",res);
+
+    if (copy_to_user(result, &res, sizeof(int))) {
+        return 3; //-EFAULT;  // Failed to copy result to user-space
+    }
+    return 0;  // Success
+}

@@ -1,0 +1,38 @@
+#include <linux/module.h>       /* Needed by all modules */
+#include <linux/kernel.h>       /* Needed for KERN_INFO */
+#include <linux/init.h>         /* Needed for the macros */
+#include <linux/syscall.h>      /* Needed for the macros */
+ 
+int sys_calc(int nr1, int  nr2, char operation, int* result)
+
+{
+  *result = 0;
+ 
+  switch (operation)
+  {
+  case '+':
+    *result = nr1 + nr2;
+    break;
+  case '-':
+    *result = nr1 - nr2;
+    break;
+  case '*':
+    *result = nr1 * nr2;
+    break;
+  case '/':
+    if (nr2 == 0)
+    {
+      printk( KERN_INFO "Error! Divion by zero.");
+    }
+    else
+    {
+      *result = nr1 / nr2;
+    }
+    break;
+  default:
+    *printk(KERN_INFO "Operator invalid.");
+    return (-1);
+    break;
+  }
+  return 0;
+}
